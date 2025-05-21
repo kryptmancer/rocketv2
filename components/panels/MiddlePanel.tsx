@@ -1015,7 +1015,7 @@ function LaunchData({
 
   return (
     <div className={`absolute left-0 right-0 mx-auto z-20 flex flex-col items-center 
-      ${isMobile ? 'w-full bottom-[20%]' : 'w-[320px] bottom-4'}`}
+      ${isMobile ? 'w-full bottom-[8%]' : 'w-[320px] bottom-4'}`}
       style={{ height: '110px' }} // Fixed height to prevent layout shifts
     >
       <div className="w-full max-w-xs bg-black/30 backdrop-blur-xl rounded-3xl p-3 shadow-md">
@@ -1240,7 +1240,7 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
   // Removed forced value for dashboard
 
   return (
-    <div className="relative w-full h-full">
+    <div className={`relative w-full h-full ${isMobile ? 'pb-[100px]' : ''}`}>
       {/* Canvas first - fixed size and position */}
       <div className="absolute inset-0 w-full h-full overflow-hidden">
         <Canvas shadows>

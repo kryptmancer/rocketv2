@@ -854,6 +854,12 @@ video {
 .bottom-\[20\%\] {
   bottom: 20%;
 }
+.bottom-\[12\%\] {
+  bottom: 12%;
+}
+.bottom-\[8\%\] {
+  bottom: 8%;
+}
 .z-10 {
   z-index: 10;
 }
@@ -1450,6 +1456,9 @@ video {
 }
 .pr-8 {
   padding-right: 2rem;
+}
+.pb-\[100px\] {
+  padding-bottom: 100px;
 }
 .text-center {
   text-align: center;
