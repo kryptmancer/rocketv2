@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useState, useRef, useEffect } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { 
   OrbitControls, 
   PerspectiveCamera, 
@@ -88,8 +88,9 @@ function RocketFlame({ isLaunched, throttle = 0, preLaunchFire = false, countdow
 
   if (!isLaunched && !preLaunchFire) return null;
   
+  // Adjusted flame position to align with the rocket engine
   return (
-    <group ref={flameRef} position={[0, -2.5, 0]}>
+    <group ref={flameRef} position={[0, -3, 0]}>
       {/* Main outer flame - brighter and more intense */}
       <mesh>
         <coneGeometry args={[0.5, 2.3, 24]} /> {/* Slightly larger flame cone */}
@@ -148,8 +149,9 @@ function RocketModel({
   const getEmissive = (part: string) => highlightedPart === part ? highlightEmissive : (selected ? "#FFFFFF" : "#000000")
   const getEmissiveIntensity = (part: string) => highlightedPart === part ? highlightIntensity : (selected ? 0.1 : 0)
 
+  // Adjust the entire rocket to sit properly on the grid
   return (
-    <group ref={rocketRef}>
+    <group ref={rocketRef} position={[0, 0.8, 0]}>
       {/* Upper body */}
       <mesh position={[0, 1.2, 0]} name="upper-airframe">
         <cylinderGeometry args={[bodyRadius, bodyRadius, 1.6, 32]} />
@@ -317,36 +319,54 @@ function DynamicCamera({
   view: 'top' | 'side' | 'perspective'
 }) {
   const ref = useRef<THREE.PerspectiveCamera>(null);
+  
+  // Camera positions are now more dramatically different for each view
   const initialPositions = useRef<{[key: string]: THREE.Vector3}>({
-    top: new THREE.Vector3(0, 15, 0),
-    side: new THREE.Vector3(15, 0, 0),
-    perspective: new THREE.Vector3(10, 10, 10)
+    top: new THREE.Vector3(0, 15, 0),      // Directly above
+    side: new THREE.Vector3(15, 0, 0),     // Pure side view
+    perspective: new THREE.Vector3(10, 10, 10)  // Isometric view
   });
+  
+  // Camera up vectors for each view to properly orient the camera
+  const camerasUp = useRef<{[key: string]: THREE.Vector3}>({
+    top: new THREE.Vector3(0, 0, -1),     // Looking down, "up" is -Z
+    side: new THREE.Vector3(0, 1, 0),     // Looking from side, "up" is Y
+    perspective: new THREE.Vector3(0, 1, 0) // Standard "up" is Y
+  });
+  
   const initialCameraPosition = useRef<THREE.Vector3 | null>(null);
-  const staticGroundY = -3.0;
+  const staticGroundY = -2.8; // Updated to match the grid position
   const lastRocketY = useRef<number>(staticGroundY);
   const cameraLag = useRef<number>(0);
+  const prevViewRef = useRef(view);
 
-  // Set initial position when view changes
+  // Set initial position and orientation when view changes
   useEffect(() => {
     if (ref.current) {
-      const position = [
-        view === 'side' ? 15 : view === 'perspective' ? 10 : 0,
-        view === 'top' ? 15 : view === 'perspective' ? 10 : 0,
-        view === 'perspective' ? 10 : 0
-      ] as const;
+      console.log(`DynamicCamera: View changed to ${view}`);
       
+      // Define positions for each view
+      const positions = {
+        top: [0, 15, 0],          // Directly above
+        side: [15, 0, 0],         // Pure side view
+        perspective: [10, 10, 10]  // Isometric view
+      };
+      
+      const position = positions[view];
       const positionVector = new THREE.Vector3(position[0], position[1], position[2]);
       initialPositions.current[view] = positionVector.clone();
       
-      // Only set the camera position on view change, but don't force lookAt
-      // This allows OrbitControls to maintain the current rotation
+      // Set camera position
       ref.current.position.copy(positionVector);
       
-      // Only set lookAt on first render
-      if (initialCameraPosition.current === null) {
-        ref.current.lookAt(0, staticGroundY, 0);
-      }
+      // Set camera up vector based on view
+      ref.current.up.copy(camerasUp.current[view]);
+      
+      // Look at target
+      ref.current.lookAt(0, staticGroundY, 0);
+      
+      // Update previous view reference
+      prevViewRef.current = view;
     }
   }, [view]);
 
@@ -442,8 +462,11 @@ function DynamicCamera({
         ref.current.position.x = THREE.MathUtils.lerp(ref.current.position.x, sideDistance, 0.05);
       }
       
-      // Always look directly at the rocket
+      // Always look directly at the rocket, maintaining the view orientation
       ref.current.lookAt(rocketX, rocketY, rocketZ);
+      
+      // Ensure we maintain proper up vector during flight for each view type
+      ref.current.up.copy(camerasUp.current[view]);
       
       // Adjust FOV for better visibility - more dynamic FOV change
       const targetFOV = Math.min(70, 50 + altitude * 0.15);
@@ -467,7 +490,7 @@ function DynamicCamera({
 }
 
 // Global tracking of rocket position for debugging - emergency backup
-let globalRocketY = -3.0;
+let globalRocketY = -2.8; // Updated global reference
 
 function RocketSimulation({
   selected,
@@ -498,8 +521,8 @@ function RocketSimulation({
     }
   };
   
-  // Fixed ground position - NEVER changes
-  const GROUND_Y = -3.0;
+  // Fixed ground position - standardized to match grid
+  const GROUND_Y = -2.8; // Standardized ground position to match grid
   // Make GROUND_POSITION an object to be re-created each time to avoid reference issues
   const GROUND_POSITION: [number, number, number] = [0, GROUND_Y, 0];
   
@@ -544,7 +567,7 @@ function RocketSimulation({
       velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]
     );
     
-    // For debugging
+    // Calculate altitude as distance from ground level
     const currentAltitude = Math.max(0, position[1] - GROUND_Y);
     
     // If rocket has crossed the threshold to start moving, ensure we send non-zero values
@@ -885,6 +908,570 @@ function RocketSimulation({
   );
 }
 
+// ViewportControls component for repositioning camera to default view
+function ViewportControls({ 
+  view, 
+  setView,
+  isMobile
+}: { 
+  view: 'top' | 'side' | 'perspective', 
+  setView: (view: 'top' | 'side' | 'perspective') => void,
+  isMobile: boolean
+}) {
+  // Add state to track the rotation of the compass needle
+  const [compassRotation, setCompassRotation] = useState(0);
+  
+  // Listen for camera/rocket rotation changes to update compass
+  useEffect(() => {
+    // Function to handle rotation updates
+    const handleRocketRotation = (e: CustomEvent) => {
+      if (e.detail && typeof e.detail.rotation === 'number') {
+        setCompassRotation(e.detail.rotation);
+      }
+    };
+    
+    // Listen for custom rocket rotation events
+    window.addEventListener('rocketRotation' as any, handleRocketRotation);
+    
+    return () => {
+      window.removeEventListener('rocketRotation' as any, handleRocketRotation);
+    };
+  }, []);
+
+  return (
+    <div className="absolute top-8 right-10 z-50 flex flex-col items-center pointer-events-auto">
+      <motion.button 
+        onClick={() => {
+          console.log(`Setting view to perspective (current: ${view})`);
+          setView('perspective');
+          // Reset compass rotation when setting to perspective view
+          setCompassRotation(0);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('rocketRotation', { 
+              detail: { rotation: 0 } 
+            }));
+            // Dispatch event to smoothly reposition the camera and rocket
+            window.dispatchEvent(new CustomEvent('resetCameraView', {}));
+          }
+        }}
+        className="rounded-full transition-all mx-2"
+        aria-label="Reset Camera to Default View"
+        whileHover={{ 
+          scale: 1.1,
+          y: -2,
+          filter: "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))"
+        }}
+        whileTap={{ scale: 0.95 }}
+        transition={{ type: "spring", stiffness: 400, damping: 15 }}
+      >
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* Define the blur filter */}
+          <defs>
+            <filter id="pinkShadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feOffset dy="2" />
+              <feGaussianBlur stdDeviation="3" />
+              <feColorMatrix type="matrix" values="0 0 0 0 0.95 0 0 0 0 0.2 0 0 0 0 0.65 0 0 0 0.6 0" />
+            </filter>
+            {/* Metallic gradient */}
+            <linearGradient id="metallicGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#7D7D7D" />
+              <stop offset="50%" stopColor="#A5A5A5" />
+              <stop offset="100%" stopColor="#5A5A5A" />
+            </linearGradient>
+          </defs>
+          {/* Navigation arrow - fatter and longer with pinkish shadow */}
+          <g transform={`rotate(-${compassRotation} 24 24)`}>
+            {/* Enhanced pinkish shadow */}
+            <path 
+              d="M24 6L37 38L24 30L11 38L24 6Z" 
+              fill="#EC4899"
+              opacity="0.7"
+              filter="url(#pinkShadow)"
+            />
+            {/* Black outline to create contrast with the shadow */}
+            <path 
+              d="M24 6L37 38L24 30L11 38L24 6Z" 
+              fill="none"
+              stroke="black"
+              strokeWidth="1.5"
+            />
+            {/* Main arrow with metallic gradient */}
+            <path 
+              d="M24 6L37 38L24 30L11 38L24 6Z" 
+              fill="url(#metallicGradient)"
+              strokeWidth="0.75"
+              stroke="rgba(0,0,0,0.5)"
+            />
+            {/* Subtle highlight for metallic effect */}
+            <path 
+              d="M24 6L30.5 22L24 6Z" 
+              fill="white"
+              opacity="0.2"
+            />
+          </g>
+        </svg>
+      </motion.button>
+    </div>
+  );
+}
+
+// Custom OrbitControls wrapper component that handles rocket roll rotation
+function CustomOrbitControls({ position, view }: { position: [number, number, number], view: 'top' | 'side' | 'perspective' }) {
+  const orbitRef = useRef<any>(null)
+  const { camera, gl, scene } = useThree()
+  const prevViewRef = useRef(view)
+  
+  // Create state for tracking interaction
+  const [isDraggingRocket, setIsDraggingRocket] = useState(false)
+  const [isRocketHovered, setIsRocketHovered] = useState(false) // Track if rocket is being hovered
+  const isDraggingRef = useRef(false)
+  const startDragPosition = useRef({ x: 0, y: 0 })
+  const startDragTimestamp = useRef(0) // Track time for speed calculation
+  const cameraRoll = useRef(0)
+  
+  // Create a raycaster for detecting rocket interactions
+  const raycaster = useRef(new THREE.Raycaster())
+  const mouse = useRef(new THREE.Vector2())
+  const isInteracting = useRef(false) // Track both mouse and touch interactions
+  
+  // Set up camera up vectors for different views
+  const camerasUp = useRef<{[key: string]: THREE.Vector3}>({
+    top: new THREE.Vector3(0, 0, -1),     // Looking down, "up" is -Z
+    side: new THREE.Vector3(0, 1, 0),     // Looking from side, "up" is Y
+    perspective: new THREE.Vector3(0, 1, 0) // Standard "up" is Y
+  });
+  
+  // Listen for reset events to completely reset the camera
+  useEffect(() => {
+    const handleResetCamera = () => {
+      // Reset camera roll
+      cameraRoll.current = 0;
+      
+      // Reset camera up vector based on view type
+      camera.up.copy(camerasUp.current[view]);
+      
+      // Reset orbit controls position
+      if (orbitRef.current) {
+        // Set target back to the rocket position
+        orbitRef.current.target.set(position[0], position[1], position[2]);
+        
+        // Reset the position based on the view
+        const positions = {
+          top: [0, 15, 0],          // Directly above
+          side: [15, 0, 0],         // Pure side view
+          perspective: [10, 10, 10]  // Isometric view
+        };
+        
+        const pos = positions[view];
+        camera.position.set(pos[0], pos[1], pos[2]);
+        
+        // Update the controls
+        orbitRef.current.update();
+      }
+    };
+    
+    window.addEventListener('resetCameraView', handleResetCamera as EventListener);
+    
+    return () => {
+      window.removeEventListener('resetCameraView', handleResetCamera as EventListener);
+    };
+  }, [camera, view, position]);
+  
+  // On component mount, set up event listeners
+  // Add cursor change when hovering over rocket
+  useEffect(() => {
+    if (isRocketHovered || isDraggingRocket) {
+      document.body.style.cursor = 'move' // Change cursor to indicate rotatable object
+    } else {
+      document.body.style.cursor = 'auto' // Reset cursor
+    }
+    
+    return () => {
+      document.body.style.cursor = 'auto' // Ensure cursor is reset on unmount
+    }
+  }, [isRocketHovered, isDraggingRocket])
+  
+  useEffect(() => {
+    const domElement = gl.domElement
+    
+    // Common function for raycasting to detect rocket
+    const checkRocketIntersection = (clientX: number, clientY: number) => {
+      // Get normalized coordinates
+      const rect = domElement.getBoundingClientRect()
+      mouse.current.x = ((clientX - rect.left) / rect.width) * 2 - 1
+      mouse.current.y = -((clientY - rect.top) / rect.height) * 2 + 1
+      
+      // Set up raycaster
+      raycaster.current.setFromCamera(mouse.current, camera)
+      
+      // Check if the ray intersects with the rocket
+      const intersects = raycaster.current.intersectObjects(scene.children, true)
+      
+      // Check for nose cone specifically for special handling
+      const noseConeIntersection = intersects.find(intersect => 
+        intersect.object && intersect.object.name.includes('nosecone')
+      );
+      
+      // If nose cone is clicked, reset camera to perspective view pointing up
+      if (noseConeIntersection) {
+        // Dispatch an event to notify that nose cone was clicked
+        if (typeof window !== 'undefined') {
+          console.log("Nose cone clicked - resetting camera view");
+          // Reset compass and camera
+          cameraRoll.current = 0;
+          window.dispatchEvent(new CustomEvent('rocketRotation', {
+            detail: { rotation: 0 }
+          }));
+          window.dispatchEvent(new CustomEvent('resetCameraView', {}));
+        }
+      }
+      
+      // Filter out non-mesh objects and check if any intersections have rocket parts
+      return intersects.some(intersect => {
+        if (!intersect.object) return false
+        
+        // Check if the object is part of the rocket (by name or hierarchy)
+        return (
+          intersect.object.name.includes('airframe') ||
+          intersect.object.name.includes('nosecone') ||
+          intersect.object.name.includes('engine') ||
+          intersect.object.name.includes('fins') ||
+          intersect.object.name.includes('parachute') ||
+          intersect.object.name.includes('electronics')
+        )
+      })
+    }
+    
+    // Calculate roll factor based on drag speed for adaptive sensitivity
+    const calculateRollFactor = (deltaX: number, deltaTime: number) => {
+      // Calculate drag speed (pixels per millisecond)
+      const dragSpeed = Math.abs(deltaX) / Math.max(deltaTime, 1);
+      
+      // Base sensitivity - adjusted lower for a more subtle rotation
+      const baseSensitivity = 0.003;  // Reduced from 0.01
+      const minSensitivity = 0.0015;  // Reduced from 0.005 - More precision for slow drags
+      const maxSensitivity = 0.006;   // Reduced from 0.02 - Faster rotation for quick drags
+      
+      // Exponential scaling based on drag speed
+      // This provides fine control for slow drags and quicker rotation for fast drags
+      let sensitivity;
+      if (dragSpeed < 0.05) {
+        // Slow drag - fine control
+        sensitivity = minSensitivity + (baseSensitivity - minSensitivity) * (dragSpeed / 0.05);
+      } else if (dragSpeed > 0.2) {
+        // Fast drag - quick rotation
+        sensitivity = baseSensitivity + (maxSensitivity - baseSensitivity) * Math.min(1, (dragSpeed - 0.2) / 0.3);
+      } else {
+        // Medium speed - normal sensitivity
+        sensitivity = baseSensitivity;
+      }
+      
+      // Apply the calculated sensitivity to the delta
+      // IMPORTANT: Invert the sign to fix rotation direction (negative becomes positive and vice versa)
+      return -deltaX * sensitivity;
+    }
+    
+    // Mouse event handlers
+    const onMouseDown = (event: MouseEvent) => {
+      if (!orbitRef.current) return
+      
+      // Check if clicking on rocket
+      const isRocket = checkRocketIntersection(event.clientX, event.clientY)
+      
+      // If clicking on rocket, start rocket-specific dragging
+      if (isRocket) {
+        setIsDraggingRocket(true)
+        isDraggingRef.current = true
+        
+        // Store initial drag position and timestamp for calculating deltas and speed
+        startDragPosition.current = { x: event.clientX, y: event.clientY }
+        startDragTimestamp.current = performance.now()
+        
+        // Temporarily disable OrbitControls to handle our own rotation
+        if (orbitRef.current) {
+          orbitRef.current.enabled = false
+        }
+      }
+      
+      isInteracting.current = true
+    }
+    
+    const onMouseMove = (event: MouseEvent) => {
+      if (!isInteracting.current || !isDraggingRef.current) return
+      
+      if (isDraggingRef.current) {
+        // Calculate time elapsed for speed calculation
+        const currentTime = performance.now()
+        const deltaTime = currentTime - startDragTimestamp.current
+        
+        // Get raw delta for speed calculation
+        const rawDeltaX = event.clientX - startDragPosition.current.x
+        
+        // Calculate adaptive roll factor based on drag speed
+        const deltaX = calculateRollFactor(rawDeltaX, deltaTime)
+        
+        // Apply roll rotation to the camera
+        // This rotates the camera around the line from the camera to the target
+        const target = new THREE.Vector3(position[0], position[1], position[2])
+        const cameraPosition = camera.position.clone()
+        const direction = new THREE.Vector3().subVectors(target, cameraPosition).normalize()
+        
+        // Create a rotation matrix for rolling around the view direction
+        const rollMatrix = new THREE.Matrix4().makeRotationAxis(direction, deltaX)
+        
+        // Apply the rotation to the camera position
+        const up = camera.up.clone()
+        up.applyMatrix4(rollMatrix)
+        camera.up.copy(up)
+        
+        // Update the orbit controls to maintain consistency
+        if (orbitRef.current) {
+          orbitRef.current.update()
+        }
+        
+        // Update start position and timestamp for next frame
+        startDragPosition.current = { x: event.clientX, y: event.clientY }
+        startDragTimestamp.current = currentTime
+        
+        // Track total roll amount
+        cameraRoll.current += deltaX
+        
+        // Emit an event with the current camera rotation to update the compass
+        if (typeof window !== 'undefined') {
+          // Convert radians to degrees and ensure values are within 0-360 range
+          const rotationDegrees = ((cameraRoll.current * 180 / Math.PI) % 360 + 360) % 360;
+          window.dispatchEvent(new CustomEvent('rocketRotation', { 
+            detail: { rotation: rotationDegrees } 
+          }));
+        }
+      }
+    }
+    
+    const onMouseUp = () => {
+      if (isDraggingRef.current) {
+        // Re-enable orbit controls
+        if (orbitRef.current) {
+          orbitRef.current.enabled = true
+        }
+        
+        // Reset drag state
+        setIsDraggingRocket(false)
+        isDraggingRef.current = false
+      }
+      
+      isInteracting.current = false
+    }
+    
+    // Touch event handlers for mobile
+    const onTouchStart = (event: TouchEvent) => {
+      if (!orbitRef.current || event.touches.length === 0) return
+      
+      // Use the first touch
+      const touch = event.touches[0]
+      
+      // Check if touching rocket
+      const isRocket = checkRocketIntersection(touch.clientX, touch.clientY)
+      
+      // If touching on rocket, start rocket-specific dragging
+      if (isRocket) {
+        setIsDraggingRocket(true)
+        isDraggingRef.current = true
+        
+        // Store initial drag position and timestamp for calculating deltas and speed
+        startDragPosition.current = { x: touch.clientX, y: touch.clientY }
+        startDragTimestamp.current = performance.now()
+        
+        // Temporarily disable OrbitControls to handle our own rotation
+        if (orbitRef.current) {
+          orbitRef.current.enabled = false
+        }
+      }
+      
+      isInteracting.current = true
+    }
+    
+    const onTouchMove = (event: TouchEvent) => {
+      if (!isInteracting.current || !isDraggingRef.current || event.touches.length === 0) return
+      
+      // Use the first touch
+      const touch = event.touches[0]
+      
+      // Calculate time elapsed for speed calculation
+      const currentTime = performance.now()
+      const deltaTime = currentTime - startDragTimestamp.current
+      
+      // Get raw delta for speed calculation
+      const rawDeltaX = touch.clientX - startDragPosition.current.x
+      
+      // Calculate adaptive roll factor based on drag speed
+      const deltaX = calculateRollFactor(rawDeltaX, deltaTime)
+      
+      // Apply roll rotation to the camera
+      // This rotates the camera around the line from the camera to the target
+      const target = new THREE.Vector3(position[0], position[1], position[2])
+      const cameraPosition = camera.position.clone()
+      const direction = new THREE.Vector3().subVectors(target, cameraPosition).normalize()
+      
+      // Create a rotation matrix for rolling around the view direction
+      const rollMatrix = new THREE.Matrix4().makeRotationAxis(direction, deltaX)
+      
+      // Apply the rotation to the camera position
+      const up = camera.up.clone()
+      up.applyMatrix4(rollMatrix)
+      camera.up.copy(up)
+      
+      // Update the orbit controls to maintain consistency
+      if (orbitRef.current) {
+        orbitRef.current.update()
+      }
+      
+      // Update start position and timestamp for next frame
+      startDragPosition.current = { x: touch.clientX, y: touch.clientY }
+      startDragTimestamp.current = currentTime
+      
+      // Track total roll amount
+      cameraRoll.current += deltaX
+      
+      // Emit an event with the current camera rotation to update the compass
+      if (typeof window !== 'undefined') {
+        // Convert radians to degrees and ensure values are within 0-360 range
+        const rotationDegrees = ((cameraRoll.current * 180 / Math.PI) % 360 + 360) % 360;
+        window.dispatchEvent(new CustomEvent('rocketRotation', { 
+          detail: { rotation: rotationDegrees } 
+        }));
+      }
+    }
+    
+    const onTouchEnd = () => {
+      if (isDraggingRef.current) {
+        // Re-enable orbit controls
+        if (orbitRef.current) {
+          orbitRef.current.enabled = true
+        }
+        
+        // Reset drag state
+        setIsDraggingRocket(false)
+        isDraggingRef.current = false
+      }
+      
+      isInteracting.current = false
+    }
+    
+    // Mouse hover detection for cursor change
+    const onMouseHover = (event: MouseEvent) => {
+      if (isDraggingRef.current) return // Skip hover detection during drag
+      
+      // Get mouse position
+      const rect = domElement.getBoundingClientRect()
+      mouse.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      mouse.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      
+      // Cast ray to check for rocket
+      raycaster.current.setFromCamera(mouse.current, camera)
+      const intersects = raycaster.current.intersectObjects(scene.children, true)
+      
+      // Check if hovering over rocket
+      const isRocket = intersects.some(intersect => {
+        if (!intersect.object) return false
+        return (
+          intersect.object.name.includes('airframe') ||
+          intersect.object.name.includes('nosecone') ||
+          intersect.object.name.includes('engine') ||
+          intersect.object.name.includes('fins') ||
+          intersect.object.name.includes('parachute') ||
+          intersect.object.name.includes('electronics')
+        )
+      })
+      
+      // Update hover state
+      setIsRocketHovered(isRocket)
+    }
+    
+    // Add event listeners
+    // Mouse events
+    domElement.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    domElement.addEventListener('mousemove', onMouseHover) // Add hover detection
+    
+    // Touch events
+    domElement.addEventListener('touchstart', onTouchStart)
+    window.addEventListener('touchmove', onTouchMove)
+    window.addEventListener('touchend', onTouchEnd)
+    
+    // Clean up event listeners on unmount
+    return () => {
+      // Mouse events
+      domElement.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      domElement.removeEventListener('mousemove', onMouseHover) // Remove hover detection
+      
+      // Touch events
+      domElement.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [camera, gl, scene, position])
+  
+  // Reset controls when view changes
+  useEffect(() => {
+    if (orbitRef.current && prevViewRef.current !== view) {
+      // Set up vectors for different views
+      const upVectors = {
+        top: new THREE.Vector3(0, 0, -1),    // Looking down, "up" is -Z
+        side: new THREE.Vector3(0, 1, 0),    // Looking from side, "up" is Y
+        perspective: new THREE.Vector3(0, 1, 0) // Standard "up" is Y
+      };
+      
+      // Update camera's up vector
+      camera.up.copy(upVectors[view]);
+      
+      // Reset and update orbit controls
+      orbitRef.current.target.set(position[0], position[1], position[2]);
+      orbitRef.current.update();
+      
+      // Update previous view
+      prevViewRef.current = view;
+    }
+  }, [view, camera, position]);
+  
+  // Make sure OrbitControls target stays updated
+  useEffect(() => {
+    if (orbitRef.current) {
+      orbitRef.current.target.set(position[0], position[1], position[2])
+      orbitRef.current.update()
+    }
+  }, [position])
+  
+  return (
+    <OrbitControls
+      ref={orbitRef}
+      enableDamping={true}
+      dampingFactor={0.2}
+      minDistance={2}
+      maxDistance={100}
+      rotateSpeed={0.8}
+      enabled={true}
+      enableZoom={true}
+      enableRotate={true}
+      enablePan={true}
+      panSpeed={1.0}
+      screenSpacePanning={true}
+      target={[position[0], position[1], position[2]]}
+      touches={{
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      }}
+      mouseButtons={{
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      }}
+    />
+  )
+}
+
 // Optimized launch data display
 function LaunchData({
   isLaunched,
@@ -916,6 +1503,28 @@ function LaunchData({
   const launchTimeRef = useRef<number | null>(null);
   const [forcedSpeed, setForcedSpeed] = useState(0);
   const [forcedAltitude, setForcedAltitude] = useState(0);
+  const [isSafari, setIsSafari] = useState(false);
+  const [isChrome, setIsChrome] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isMacOS, setIsMacOS] = useState(false);
+  
+  // Enhanced browser/device detection
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userAgent = window.navigator.userAgent.toLowerCase();
+      const isSafariBrowser = /^((?!chrome|android).)*safari/i.test(userAgent);
+      const isChromeBrowser = /chrome/i.test(userAgent) && !/edge|edg/i.test(userAgent);
+      const isIOSDevice = /iphone|ipad|ipod|ios/i.test(userAgent);
+      const isMacOSDevice = /macintosh|mac os x/i.test(userAgent) && !isIOSDevice;
+      
+      setIsSafari(isSafariBrowser);
+      setIsChrome(isChromeBrowser);
+      setIsIOS(isIOSDevice);
+      setIsMacOS(isMacOSDevice);
+      
+      console.log(`Browser detection - Safari: ${isSafariBrowser}, Chrome: ${isChromeBrowser}, iOS: ${isIOSDevice}, macOS: ${isMacOSDevice}`);
+    }
+  }, []);
   
   // COMPLETELY NEW APPROACH: Generate synthetic display values
   // This runs independently of the physics engine
@@ -936,16 +1545,16 @@ function LaunchData({
         const now = Date.now() / 1000;
         const elapsed = now - (launchTimeRef.current || now);
         
-                 // Guaranteed increasing values based on elapsed time
-         // Speed stays at exactly 0.0 during pre-launch, then starts increasing
-         let newSpeed = elapsed < 2 
-           ? 0.0  // Stay exactly at zero during pre-launch
-           : (elapsed - 2) * 10; // Start from zero at ignition, then accelerate
-         
-         // Altitude starts at 0 then increases with acceleration
-         let newAltitude = elapsed < 2 
-           ? 0  // Stay at 0 during pre-launch
-           : Math.pow(elapsed - 2, 2) * 2; // Quadratic increase after
+        // Guaranteed increasing values based on elapsed time
+        // Speed stays at exactly 0.0 during pre-launch, then starts increasing
+        let newSpeed = elapsed < 2 
+          ? 0.0  // Stay exactly at zero during pre-launch
+          : (elapsed - 2) * 10; // Start from zero at ignition, then accelerate
+        
+        // Altitude starts at 0 then increases with acceleration
+        let newAltitude = elapsed < 2 
+          ? 0  // Stay at 0 during pre-launch
+          : Math.pow(elapsed - 2, 2) * 2; // Quadratic increase after
           
         // Cap at reasonable values
         newSpeed = Math.min(newSpeed, 1000);
@@ -1013,9 +1622,34 @@ function LaunchData({
     }
   };
 
+  // Refined dashboard position based on device and browser specifics
+  const getDashboardPosition = () => {
+    if (isMobile) {
+      // Mobile device detection
+      if (isIOS && isSafari) {
+        return 'bottom-[12%]'; // Mobile iOS Safari needs extra space for bottom bar
+      } else if (isChrome) {
+        return 'bottom-[18%]'; // Mobile Chrome
+      } else {
+        return 'bottom-[15%]'; // Other mobile browsers
+      }
+    } else {
+      // Desktop handling
+      if (isMacOS && isSafari) {
+        return 'bottom-4'; // Desktop Safari on MacOS - no need for extra margin
+      } else if (isSafari) {
+        return 'bottom-5'; // Other Safari instances
+      } else {
+        return 'bottom-4'; // Desktop Chrome and others
+      }
+    }
+  };
+
+  const dashboardPosition = getDashboardPosition();
+
   return (
     <div className={`absolute left-0 right-0 mx-auto z-20 flex flex-col items-center 
-      ${isMobile ? 'w-full bottom-[12%]' : 'w-[320px] bottom-4'}`}
+      ${isMobile ? `w-full ${dashboardPosition}` : `w-[320px] ${dashboardPosition}`}`}
       style={{ height: '110px' }} // Fixed height to prevent layout shifts
     >
       <div className="w-full max-w-xs bg-black/30 backdrop-blur-xl rounded-3xl p-3 shadow-md">
@@ -1090,11 +1724,8 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
   const [throttle, setThrottle] = useState(0.8);
   const [resetTrigger, setResetTrigger] = useState(false);
   
-  // Add a ref for OrbitControls
-  const orbitControlsRef = useRef<any>(null);
-  
-  // Fixed ground position that never changes
-  const GROUND_Y = -3.0;
+  // Fixed ground position that places rocket on top of grid
+  const GROUND_Y = -2.8; // Updated to match the grid position
   const GROUND_POSITION: [number, number, number] = [0, GROUND_Y, 0];
   
   const [position, setPosition] = useState<[number, number, number]>(GROUND_POSITION);
@@ -1201,9 +1832,34 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
     return () => window.removeEventListener('highlightComponent' as any, handleHighlight);
   }, []);
 
+  // Listen for nose cone click events to reset camera view
+  useEffect(() => {
+    const handleResetCameraView = () => {
+      console.log("Handling reset camera view event");
+      setView('perspective');
+      // Reset compass when camera view is reset
+      handleViewReset();
+    };
+    
+    // Also reset compass when reset button is clicked
+    const handleViewReset = () => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rocketRotation', { 
+          detail: { rotation: 0 } 
+        }));
+      }
+    };
+    
+    window.addEventListener('resetCameraView', handleResetCameraView as EventListener);
+    
+    return () => {
+      window.removeEventListener('resetCameraView', handleResetCameraView as EventListener);
+    };
+  }, []);
+
   // Calculate speed and altitude
-  // GROUND_Y is -3.0, so we add 3 to get altitude above ground
-  const altitude = Math.max(0, position[1] + 3);
+  // Updated altitude calculation to use standardized GROUND_Y
+  const altitude = Math.max(0, position[1] - GROUND_Y);
   const speed = Math.sqrt(
     velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]
   );
@@ -1219,28 +1875,8 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
     }
   }, [speed, altitude, isLaunched, resetTrigger, maxSpeed, maxAltitude]);
   
-  // Update OrbitControls target when position changes
-  useEffect(() => {
-    if (orbitControlsRef.current) {
-      orbitControlsRef.current.target.set(position[0], position[1], position[2]);
-    }
-  }, [position]);
-  
-  // Update OrbitControls when view changes
-  useEffect(() => {
-    if (orbitControlsRef.current) {
-      // Update the target to the rocket position
-      orbitControlsRef.current.target.set(position[0], position[1], position[2]);
-      
-      // Reset the orbit controls to prevent jumpy transitions
-      orbitControlsRef.current.update();
-    }
-  }, [view, position]);
-  
-  // Removed forced value for dashboard
-
   return (
-    <div className={`relative w-full h-full ${isMobile ? 'pb-[100px]' : ''}`}>
+    <div className="relative w-full h-full overflow-hidden">
       {/* Canvas first - fixed size and position */}
       <div className="absolute inset-0 w-full h-full overflow-hidden">
         <Canvas shadows>
@@ -1250,33 +1886,9 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
             view={view}
           />
           
-          {/* Removed debug position indicator */}
+          {/* Custom OrbitControls with rocket roll rotation */}
+          <CustomOrbitControls position={position} view={view} />
           
-          <OrbitControls 
-            ref={orbitControlsRef}
-            enableDamping={true}
-            dampingFactor={0.2} 
-            minDistance={2}
-            maxDistance={100}
-            rotateSpeed={0.8}
-            enabled={true}
-            enableZoom={true}
-            enableRotate={true}
-            enablePan={true}
-            panSpeed={1.0}
-            screenSpacePanning={true}
-            target={[position[0], position[1], position[2]]}
-            touches={{
-              ONE: THREE.TOUCH.ROTATE,
-              TWO: THREE.TOUCH.DOLLY_PAN
-            }}
-            mouseButtons={{
-              LEFT: THREE.MOUSE.ROTATE,
-              MIDDLE: THREE.MOUSE.DOLLY,
-              RIGHT: THREE.MOUSE.PAN
-            }}
-          />
-
           {/* Scene lighting */}
           <ambientLight intensity={0.25} /> 
           <directionalLight 
@@ -1300,10 +1912,10 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
             color="#5eead4"
           />
           
-          {/* Launch light */}
+          {/* Launch light - adjusted to match ground position */}
           {isLaunched && (
             <pointLight 
-              position={[0, -3, 0]} 
+              position={[0, GROUND_Y, 0]} 
               intensity={2} 
               distance={15} 
               color="#ff8866"
@@ -1314,8 +1926,8 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
           <Environment preset="night" />
           {/* Fixed contact shadows at exactly ground level */}
           <ContactShadows 
-            position={[0, -3, 0]} 
-            opacity={0.4} 
+            position={[0, GROUND_Y + 0.01, 0]} 
+            opacity={0.4}  
             scale={15} 
             blur={2.5} 
             far={5} 
@@ -1325,18 +1937,18 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
           />
           
           {/* Absolutely fixed grid that never moves */}
-            <Grid 
-              infiniteGrid 
-              cellSize={0.5} 
-              cellThickness={0.5} 
-              sectionSize={2} 
-              sectionThickness={1} 
-              fadeDistance={30} 
-              fadeStrength={1.5}
-              cellColor="#00eaff" 
-              sectionColor="#ec4899"
-              position={[0, -3, 0]}
-            />
+          <Grid 
+            infiniteGrid 
+            cellSize={0.5} 
+            cellThickness={0.5} 
+            sectionSize={2} 
+            sectionThickness={1} 
+            fadeDistance={30} 
+            fadeStrength={1.5}
+            cellColor="#00eaff" 
+            sectionColor="#ec4899"
+            position={[0, GROUND_Y, 0]}
+          />
           <Suspense fallback={null}>
             {/* Force re-creation of RocketSimulation when launch state changes */}
             <RocketSimulation 
@@ -1353,7 +1965,7 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
       </div>
       
       {/* UI elements - absolutely positioned over the canvas */}
-      {/* Removed ViewportControls */}
+      <ViewportControls view={view} setView={setView} isMobile={isMobile} />
       
       <LaunchData
         isLaunched={isLaunched}
@@ -1370,4 +1982,4 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
       />
     </div>
   )
-} 
+}

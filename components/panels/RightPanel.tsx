@@ -125,8 +125,10 @@ function ComponentItem({
     switch(id) {
       case 'nosecone':
         return (
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="12 2 19 21 12 17 5 21 12 2"></polygon>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            {/* Custom cone shape */}
+            <path d="M12 2L18 16H6L12 2Z" />
+            <ellipse cx="12" cy="16" rx="6" ry="1" />
           </svg>
         );
       case 'airframe':
@@ -338,6 +340,17 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
   const [settings, setSettings] = useState(componentSettings);
   // Chat visibility state
   const [isChatVisible, setIsChatVisible] = useState(true);
+  // Browser detection
+  const [isSafari, setIsSafari] = useState(false);
+  
+  // Detect Safari browser on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userAgent = window.navigator.userAgent;
+      const isSafariBrowser = /^((?!chrome|android).)*safari/i.test(userAgent);
+      setIsSafari(isSafariBrowser);
+    }
+  }, []);
   
   // Handle editing component
   const handleEdit = (id: string | null) => {
@@ -434,12 +447,23 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
     });
   };
 
+  // Calculate Safari-specific styles
+  const safariStyles = isSafari && isMobile ? {
+    mainContainer: "h-full flex flex-col bg-transparent backdrop-blur-sm border-l border-white/5 overflow-hidden",
+    chatSectionHeight: isChatVisible ? 'h-[58%]' : 'h-[calc(100%-50px)]',
+    toggleButton: "absolute flex items-center justify-center w-8 h-8 bg-transparent cursor-pointer text-white/70 hover:text-white/90 z-50 transform translate-y-0",
+  } : {
+    mainContainer: "h-full flex flex-col bg-transparent backdrop-blur-sm border-l border-white/5",
+    chatSectionHeight: isMobile ? (isChatVisible ? 'h-3/5 max-h-[60%]' : 'h-[calc(100%-50px)]') : (isChatVisible ? 'h-[50%]' : 'h-[calc(100%-50px)]'),
+    toggleButton: "absolute flex items-center justify-center w-8 h-8 bg-transparent cursor-pointer text-white/70 hover:text-white/90 z-40",
+  };
+
   return (
-    <div className="h-full flex flex-col bg-transparent backdrop-blur-sm border-l border-white/5">
+    <div className={safariStyles.mainContainer}>
       {/* Main content container with unified layout */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Components and Metrics section - Always visible */}
-        <div className={`overflow-y-auto ${isSmallDesktop ? 'px-5 py-4' : 'px-3 py-3'} ${isMobile ? (isChatVisible ? 'h-2/5' : 'h-[calc(100%-40px)]') : (isChatVisible ? 'h-[50%]' : 'h-[calc(100%-40px)]')} bg-transparent backdrop-blur-sm transition-all duration-300`}>
+        <div className={`overflow-y-auto ${isSmallDesktop ? 'px-5 py-4' : 'px-3 py-3'} ${isMobile ? (isChatVisible ? 'h-2/5' : 'h-[calc(100%-50px)]') : (isChatVisible ? 'h-[50%]' : 'h-[calc(100%-50px)]')} bg-transparent backdrop-blur-sm transition-all duration-300`}>
           {/* Enhanced Components Section */}
           <div className={`${isSmallDesktop ? 'mb-5' : 'mb-3'}`}>
             <h2 className="text-xs font-medium mb-2 flex items-center text-white/90">
@@ -517,11 +541,11 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
         </div>
 
         {/* Custom aesthetic divider with neon glow and toggle button */}
-        <div className={`relative flex items-center justify-center ${isSmallDesktop ? 'py-3 mx-5' : 'py-2 mx-4'}`}>
+        <div className={`relative flex items-center justify-center ${isSmallDesktop ? 'py-3 mx-5' : 'py-2 mx-4'} h-[50px] z-30`}>
           <div className="w-full h-[0.5px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent"></div>
           <div className="absolute h-[2px] w-[70%] blur-[3px] bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent"></div>
           <motion.button
-            className="absolute flex items-center justify-center w-8 h-8 bg-transparent cursor-pointer z-10 text-white/70 hover:text-white/90"
+            className={safariStyles.toggleButton}
             onClick={() => setIsChatVisible(!isChatVisible)}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
@@ -542,9 +566,9 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
         <AnimatePresence>
           {isChatVisible && (
             <motion.div 
-              className={`flex-1 flex flex-col ${isMobile ? 'h-3/5 max-h-[60%]' : 'h-[50%]'} bg-transparent backdrop-blur-sm overflow-hidden`}
+              className={`flex-1 flex flex-col ${safariStyles.chatSectionHeight} bg-transparent backdrop-blur-sm overflow-hidden`}
               initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: isMobile ? '60%' : '50%' }}
+              animate={{ opacity: 1, height: isSafari && isMobile ? '58%' : (isMobile ? '60%' : '50%') }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ 
                 type: "spring", 
