@@ -1015,7 +1015,7 @@ function LaunchData({
 
   return (
     <div className={`absolute left-0 right-0 mx-auto z-20 flex flex-col items-center 
-      ${isMobile ? 'w-full bottom-[15%]' : 'w-[320px] bottom-4'}`}
+      ${isMobile ? 'w-full bottom-[12%]' : 'w-[320px] bottom-4'}`}
       style={{ height: '110px' }} // Fixed height to prevent layout shifts
     >
       <div className="w-full max-w-xs bg-black/30 backdrop-blur-xl rounded-3xl p-3 shadow-md">
@@ -1315,12 +1315,12 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
           {/* Fixed contact shadows at exactly ground level */}
           <ContactShadows 
             position={[0, -3, 0]} 
-            opacity={0.6} 
+            opacity={0.4} 
             scale={15} 
             blur={2.5} 
             far={5} 
             resolution={512}
-            color="#003"
+            color="#001133"
             frames={1} // Render once and cache for better performance
           />
           

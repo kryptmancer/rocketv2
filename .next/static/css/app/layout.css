@@ -996,6 +996,24 @@ video {
 .h-screen {
   height: 100vh;
 }
+.h-0 {
+  height: 0px;
+}
+.h-\[calc\(100\%-40px\)\] {
+  height: calc(100% - 40px);
+}
+.h-5 {
+  height: 1.25rem;
+}
+.h-7 {
+  height: 1.75rem;
+}
+.max-h-0 {
+  max-height: 0px;
+}
+.max-h-\[60\%\] {
+  max-height: 60%;
+}
 .min-h-\[120px\] {
   min-height: 120px;
 }
@@ -1028,6 +1046,12 @@ video {
 }
 .w-screen {
   width: 100vw;
+}
+.w-5 {
+  width: 1.25rem;
+}
+.w-7 {
+  width: 1.75rem;
 }
 .min-w-\[70px\] {
   min-width: 70px;
@@ -1558,6 +1582,12 @@ video {
 .opacity-90 {
   opacity: 0.9;
 }
+.opacity-0 {
+  opacity: 0;
+}
+.opacity-100 {
+  opacity: 1;
+}
 .shadow-md {
   --tw-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --tw-shadow-colored: 0 4px 6px -1px var(--tw-shadow-color), 0 2px 4px -2px var(--tw-shadow-color);
@@ -1613,6 +1643,9 @@ video {
 }
 .duration-200 {
   transition-duration: 200ms;
+}
+.duration-300 {
+  transition-duration: 300ms;
 }
 
 /* Custom scrollbar hiding */
@@ -1674,6 +1707,10 @@ video {
 .hover\:text-white:hover {
   --tw-text-opacity: 1;
   color: rgb(255 255 255 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-white\/90:hover {
+  color: rgb(255 255 255 / 0.9);
 }
 
 .hover\:shadow-sm:hover {

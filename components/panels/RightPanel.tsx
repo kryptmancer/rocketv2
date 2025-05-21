@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 
 // Chat message type definition
 type ChatMessage = {
@@ -336,6 +336,8 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
   const [editingComponent, setEditingComponent] = useState<string | null>(null);
   // Component settings state
   const [settings, setSettings] = useState(componentSettings);
+  // Chat visibility state
+  const [isChatVisible, setIsChatVisible] = useState(true);
   
   // Handle editing component
   const handleEdit = (id: string | null) => {
@@ -437,7 +439,7 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
       {/* Main content container with unified layout */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Components and Metrics section - Always visible */}
-        <div className={`overflow-y-auto ${isSmallDesktop ? 'px-5 py-4' : 'px-3 py-3'} ${isMobile ? 'h-2/5' : 'h-[50%]'} bg-transparent backdrop-blur-sm`}>
+        <div className={`overflow-y-auto ${isSmallDesktop ? 'px-5 py-4' : 'px-3 py-3'} ${isMobile ? (isChatVisible ? 'h-2/5' : 'h-[calc(100%-40px)]') : (isChatVisible ? 'h-[50%]' : 'h-[calc(100%-40px)]')} bg-transparent backdrop-blur-sm transition-all duration-300`}>
           {/* Enhanced Components Section */}
           <div className={`${isSmallDesktop ? 'mb-5' : 'mb-3'}`}>
             <h2 className="text-xs font-medium mb-2 flex items-center text-white/90">
@@ -445,18 +447,6 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
               </svg>
               Rocket Components
-              {/* Add collapse button to the right side of the section heading for mobile */}
-              {isMobile && (
-                <button 
-                  onClick={onCollapse}
-                  className="ml-auto w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/15 transition-colors"
-                  aria-label="Back to main view"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 18l6-6-6-6"></path>
-                  </svg>
-                </button>
-              )}
             </h2>
             <div className="space-y-1">
               {rocketComponents.map(component => (
@@ -496,121 +486,150 @@ export default function RightPanel({ onCollapse, isCollapsed, isMobile = false, 
             </motion.div>
           </div>
           
-          {/* Performance charts - only shown in desktop view or on request */}
-          {!isMobile && (
-            <div className="bg-gradient-to-br from-black/5 to-slate-800/5 rounded-lg p-2 sm:p-3 backdrop-blur-sm min-h-[120px] sm:min-h-[140px] border border-white/5">
-              <h3 className="text-xs sm:text-sm font-medium mb-2 sm:mb-3 text-white/90">Performance</h3>
-              
-              <MetricChart 
-                title="Thrust" 
-                value={mockMetrics.thrust} 
-                max={3000} 
-                unit="N" 
-                color="rgba(255, 255, 255, 0.8)" 
-              />
-              
-              <MetricChart 
-                title="ISP" 
-                value={mockMetrics.isp} 
-                max={300} 
-                unit="s" 
-                color="rgba(255, 255, 255, 0.8)" 
-              />
-              
-              <MetricChart 
-                title="Stability" 
-                value={mockMetrics.stability} 
-                max={3} 
-                unit="cal" 
-                color={mockMetrics.stability < 1.2 ? "rgb(245, 158, 11)" : "rgba(255, 255, 255, 0.8)"} 
-              />
-            </div>
-          )}
+          {/* Performance charts - now visible on all devices */}
+          <div className="bg-gradient-to-br from-black/5 to-slate-800/5 rounded-lg p-2 sm:p-3 backdrop-blur-sm min-h-[120px] sm:min-h-[140px] border border-white/5">
+            <h3 className="text-xs sm:text-sm font-medium mb-2 sm:mb-3 text-white/90">Performance</h3>
+            
+            <MetricChart 
+              title="Thrust" 
+              value={mockMetrics.thrust} 
+              max={3000} 
+              unit="N" 
+              color="rgba(255, 255, 255, 0.8)" 
+            />
+            
+            <MetricChart 
+              title="ISP" 
+              value={mockMetrics.isp} 
+              max={300} 
+              unit="s" 
+              color="rgba(255, 255, 255, 0.8)" 
+            />
+            
+            <MetricChart 
+              title="Stability" 
+              value={mockMetrics.stability} 
+              max={3} 
+              unit="cal" 
+              color={mockMetrics.stability < 1.2 ? "rgb(245, 158, 11)" : "rgba(255, 255, 255, 0.8)"} 
+            />
+          </div>
         </div>
 
-        {/* Custom aesthetic divider with neon glow */}
+        {/* Custom aesthetic divider with neon glow and toggle button */}
         <div className={`relative flex items-center justify-center ${isSmallDesktop ? 'py-3 mx-5' : 'py-2 mx-4'}`}>
           <div className="w-full h-[0.5px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent"></div>
           <div className="absolute h-[2px] w-[70%] blur-[3px] bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent"></div>
+          <motion.button
+            className="absolute flex items-center justify-center w-8 h-8 bg-transparent cursor-pointer z-10 text-white/70 hover:text-white/90"
+            onClick={() => setIsChatVisible(!isChatVisible)}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            animate={{ 
+              rotate: isChatVisible ? 180 : 0
+            }}
+            transition={{ type: "spring", stiffness: 400, damping: 20 }}
+          >
+            {/* Double chevron icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 12 12 6 6 12"></polyline>
+              <polyline points="18 18 12 12 6 18"></polyline>
+            </svg>
+          </motion.button>
         </div>
         
-        {/* Chat section - Always visible */}
-        <div className={`flex-1 flex flex-col ${isMobile ? 'h-3/5' : 'h-[50%]'} bg-transparent backdrop-blur-sm`}>
-          {/* Messages area */}
-          <div ref={chatContainerRef} className={`flex-1 overflow-y-auto ${isSmallDesktop ? 'p-4' : 'p-2.5'} space-y-2.5`}>
-            {messages.map(msg => (
-              <div 
-                key={msg.id} 
-                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div 
-                  className={`max-w-[85%] rounded-xl px-3 py-2 ${
-                    msg.sender === 'user' 
-                      ? 'bg-gradient-to-r from-blue-500/15 to-cyan-500/15 rounded-tr-none backdrop-blur-sm border border-white/10' 
-                      : 'bg-gradient-to-r from-purple-500/15 to-pink-500/15 rounded-tl-none backdrop-blur-sm border border-white/10'
-                  }`}
-                >
-                  <p className="text-xs text-white">{msg.message}</p>
-                  {isClient && (
-                    <p className="text-[10px] mt-1 text-white/60">
-                      {formatTime(msg.timestamp)}
-                    </p>
-                  )}
+        {/* Chat section with AnimatePresence for smooth animations */}
+        <AnimatePresence>
+          {isChatVisible && (
+            <motion.div 
+              className={`flex-1 flex flex-col ${isMobile ? 'h-3/5 max-h-[60%]' : 'h-[50%]'} bg-transparent backdrop-blur-sm overflow-hidden`}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: isMobile ? '60%' : '50%' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ 
+                type: "spring", 
+                stiffness: 300, 
+                damping: 30,
+                mass: 0.8
+              }}
+            >
+              {/* Messages area */}
+              <div ref={chatContainerRef} className={`flex-1 overflow-y-auto ${isSmallDesktop ? 'p-4' : 'p-2.5'} space-y-2.5`}>
+                {messages.map(msg => (
+                  <div 
+                    key={msg.id} 
+                    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div 
+                      className={`max-w-[85%] rounded-xl px-3 py-2 ${
+                        msg.sender === 'user' 
+                          ? 'bg-gradient-to-r from-blue-500/15 to-cyan-500/15 rounded-tr-none backdrop-blur-sm border border-white/10' 
+                          : 'bg-gradient-to-r from-purple-500/15 to-pink-500/15 rounded-tl-none backdrop-blur-sm border border-white/10'
+                      }`}
+                    >
+                      <p className="text-xs text-white">{msg.message}</p>
+                      {isClient && (
+                        <p className="text-[10px] mt-1 text-white/60">
+                          {formatTime(msg.timestamp)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Chat input with integrated suggestions */}
+              <div className={`${isSmallDesktop ? 'p-4' : 'p-2.5'} bg-transparent backdrop-blur-sm`}>
+                {/* Commands row with individual borders */}
+                <div className="flex overflow-x-auto pb-2 space-x-1.5">
+                  {suggestedCommands.map(cmd => (
+                    <motion.button
+                      key={cmd.id}
+                      className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] text-white/80 border-l-2 border-indigo-500/20 hover:border-purple-500/30 transition-all flex-shrink-0 backdrop-blur-sm"
+                      onClick={() => setInputValue(cmd.text)}
+                      whileHover={{ scale: 1.05, x: 1, y: -1 }}
+                      whileTap={{ scale: 0.92, opacity: 0.8 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                    >
+                      {cmd.text}
+                    </motion.button>
+                  ))}
+                </div>
+                
+                {/* Input field */}
+                <div className="flex bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-full backdrop-blur-sm overflow-hidden mt-1 border border-white/10 hover:border-white/20 transition-colors">
+                  <input
+                    type="text"
+                    className="flex-1 bg-transparent px-3 py-2 text-xs focus:outline-none text-white/90 placeholder-white/40"
+                    placeholder="Ask the AI assistant..."
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSendMessage();
+                    }}
+                  />
+                  <motion.button
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-black/20 hover:bg-black/30 transition-all text-white/90 hover:text-white mx-1 my-0.5 hover:shadow-sm"
+                    onClick={handleSendMessage}
+                    whileHover={{ scale: 1.1, rotate: 15 }}
+                    whileTap={{ scale: 0.9 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 10 }}
+                  >
+                    <motion.div
+                      whileHover={{ scale: 1.1, rotate: 15 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </motion.div>
+                  </motion.button>
                 </div>
               </div>
-            ))}
-          </div>
-          
-          {/* Chat input with integrated suggestions */}
-          <div className={`${isSmallDesktop ? 'p-4' : 'p-2.5'} bg-transparent backdrop-blur-sm`}>
-            {/* Commands row with individual borders */}
-            <div className="flex overflow-x-auto pb-2 space-x-1.5">
-              {suggestedCommands.map(cmd => (
-                <motion.button
-                  key={cmd.id}
-                  className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] text-white/80 border-l-2 border-indigo-500/20 hover:border-purple-500/30 transition-all flex-shrink-0 backdrop-blur-sm"
-                  onClick={() => setInputValue(cmd.text)}
-                  whileHover={{ scale: 1.05, x: 1, y: -1 }}
-                  whileTap={{ scale: 0.92, opacity: 0.8 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                >
-                  {cmd.text}
-                </motion.button>
-              ))}
-            </div>
-            
-            {/* Input field */}
-            <div className="flex bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-full backdrop-blur-sm overflow-hidden mt-1 border border-white/10 hover:border-white/20 transition-colors">
-              <input
-                type="text"
-                className="flex-1 bg-transparent px-3 py-2 text-xs focus:outline-none text-white/90 placeholder-white/40"
-                placeholder="Ask the AI assistant..."
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSendMessage();
-                }}
-              />
-              <motion.button
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/20 hover:bg-black/30 transition-all text-white/90 hover:text-white mx-1 my-0.5 hover:shadow-sm"
-                onClick={handleSendMessage}
-                whileHover={{ scale: 1.1, rotate: 15 }}
-                whileTap={{ scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 500, damping: 10 }}
-              >
-                <motion.div
-                  whileHover={{ scale: 1.1, rotate: 15 }}
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                </motion.div>
-              </motion.button>
-            </div>
-          </div>
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
