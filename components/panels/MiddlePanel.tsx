@@ -339,8 +339,14 @@ function DynamicCamera({
       const positionVector = new THREE.Vector3(position[0], position[1], position[2]);
       initialPositions.current[view] = positionVector.clone();
       
+      // Only set the camera position on view change, but don't force lookAt
+      // This allows OrbitControls to maintain the current rotation
       ref.current.position.copy(positionVector);
-      ref.current.lookAt(0, staticGroundY, 0);
+      
+      // Only set lookAt on first render
+      if (initialCameraPosition.current === null) {
+        ref.current.lookAt(0, staticGroundY, 0);
+      }
     }
   }, [view]);
 
@@ -446,18 +452,8 @@ function DynamicCamera({
         ref.current.updateProjectionMatrix();
       }
     }
-    else {
-      // Reset to default position when not launched
-      const defaultPos = initialPositions.current[view];
-      ref.current.position.lerp(defaultPos, 0.1);
-      ref.current.lookAt(0, staticGroundY, 0);
-      
-      // Reset FOV
-      if (ref.current.fov !== 50) {
-        ref.current.fov = THREE.MathUtils.lerp(ref.current.fov, 50, 0.1);
-        ref.current.updateProjectionMatrix();
-      }
-    }
+    // Don't force the camera to look at a specific point when not launched
+    // This allows OrbitControls to take over completely
   });
   
   // Camera positions by view type
@@ -690,14 +686,9 @@ function RocketSimulation({
     
     const currentTime = state.clock.elapsedTime;
     
-    // If not launched, ensure position stays exactly at ground level
+    // If not launched, do not forcibly reset position; allow free movement
     if (!isLaunchedRef.current) {
-      if (positionRef.current[1] !== GROUND_Y || 
-          positionRef.current[0] !== 0 || 
-          positionRef.current[2] !== 0) {
-        setPosition(GROUND_POSITION);
-        positionRef.current = GROUND_POSITION;
-      }
+      // No forced position reset here
       return;
     }
     
@@ -894,41 +885,6 @@ function RocketSimulation({
   );
 }
 
-// Optimized viewport controls
-function ViewportControls({ 
-  view, 
-  setView,
-  isMobile
-}: { 
-  view: 'top' | 'side' | 'perspective', 
-  setView: (view: 'top' | 'side' | 'perspective') => void,
-  isMobile: boolean
-}) {
-  const viewOptions = [
-    { id: 'top', label: 'Top' },
-    { id: 'side', label: 'Side' },
-    { id: 'perspective', label: '3D' }
-  ];
-  
-  return (
-    <div className={`absolute top-0 left-0 right-0 mx-auto z-10 flex justify-center ${isMobile ? 'mt-4' : 'mt-4'}`}>
-      <div className="bg-black/30 backdrop-blur-xl rounded-full py-1.5 px-2 sm:px-3 flex space-x-1 sm:space-x-2">
-        {viewOptions.map(({id, label}) => (
-        <button 
-            key={id}
-            onClick={() => setView(id as 'top' | 'side' | 'perspective')}
-          className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-small transition-all ${
-              view === id ? 'bg-white/15' : 'hover:bg-white/10'
-          }`}
-        >
-            {label}
-        </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Optimized launch data display
 function LaunchData({
   isLaunched,
@@ -1058,8 +1014,8 @@ function LaunchData({
   };
 
   return (
-    <div className={`absolute bottom-0 left-0 right-0 mx-auto z-20 flex flex-col items-center 
-      ${isMobile ? 'w-full mb-3' : 'w-[320px] mb-4'}`}
+    <div className={`absolute left-0 right-0 mx-auto z-20 flex flex-col items-center 
+      ${isMobile ? 'w-full bottom-[20%]' : 'w-[320px] bottom-4'}`}
       style={{ height: '110px' }} // Fixed height to prevent layout shifts
     >
       <div className="w-full max-w-xs bg-black/30 backdrop-blur-xl rounded-3xl p-3 shadow-md">
@@ -1133,6 +1089,9 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
   const [isLaunched, setIsLaunched] = useState(false);
   const [throttle, setThrottle] = useState(0.8);
   const [resetTrigger, setResetTrigger] = useState(false);
+  
+  // Add a ref for OrbitControls
+  const orbitControlsRef = useRef<any>(null);
   
   // Fixed ground position that never changes
   const GROUND_Y = -3.0;
@@ -1260,6 +1219,24 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
     }
   }, [speed, altitude, isLaunched, resetTrigger, maxSpeed, maxAltitude]);
   
+  // Update OrbitControls target when position changes
+  useEffect(() => {
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.target.set(position[0], position[1], position[2]);
+    }
+  }, [position]);
+  
+  // Update OrbitControls when view changes
+  useEffect(() => {
+    if (orbitControlsRef.current) {
+      // Update the target to the rocket position
+      orbitControlsRef.current.target.set(position[0], position[1], position[2]);
+      
+      // Reset the orbit controls to prevent jumpy transitions
+      orbitControlsRef.current.update();
+    }
+  }, [view, position]);
+  
   // Removed forced value for dashboard
 
   return (
@@ -1276,6 +1253,7 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
           {/* Removed debug position indicator */}
           
           <OrbitControls 
+            ref={orbitControlsRef}
             enableDamping={true}
             dampingFactor={0.2} 
             minDistance={2}
@@ -1287,6 +1265,7 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
             enablePan={true}
             panSpeed={1.0}
             screenSpacePanning={true}
+            target={[position[0], position[1], position[2]]}
             touches={{
               ONE: THREE.TOUCH.ROTATE,
               TWO: THREE.TOUCH.DOLLY_PAN
@@ -1374,7 +1353,7 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false }
       </div>
       
       {/* UI elements - absolutely positioned over the canvas */}
-      <ViewportControls view={view} setView={setView} isMobile={isMobile} />
+      {/* Removed ViewportControls */}
       
       <LaunchData
         isLaunched={isLaunched}
