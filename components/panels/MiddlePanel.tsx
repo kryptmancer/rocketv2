@@ -120,14 +120,16 @@ function RocketModel({
   throttle,
   highlightedPart,
   preLaunchFire = false,
-  countdownStage = 0
+  countdownStage = 0,
+  preserveRotation = false // Add new prop to control rotation preservation
 }: { 
   selected: boolean, 
   isLaunched: boolean,
   throttle: number,
   highlightedPart: string | null,
   preLaunchFire?: boolean,
-  countdownStage?: number
+  countdownStage?: number,
+  preserveRotation?: boolean // Add type for new prop
 }) {
   const rocketRef = useRef<THREE.Group>(null)
   const bodyRadius = 0.5
@@ -136,8 +138,8 @@ function RocketModel({
     // Only rotate for display when neither selected nor launched
     if (rocketRef.current && !selected && !isLaunched && !preLaunchFire) {
       rocketRef.current.rotation.y += delta * 0.1
-    } else if (rocketRef.current && preLaunchFire) {
-      // Ensure rocket is facing straight up during pre-launch
+    } else if (rocketRef.current && preLaunchFire && !preserveRotation) {
+      // Only reset rotation during pre-launch if preserveRotation is false
       rocketRef.current.rotation.x = THREE.MathUtils.lerp(rocketRef.current.rotation.x, 0, 0.1);
       rocketRef.current.rotation.z = THREE.MathUtils.lerp(rocketRef.current.rotation.z, 0, 0.1);
     }
@@ -334,6 +336,9 @@ function DynamicCamera({
     perspective: new THREE.Vector3(0, 1, 0) // Standard "up" is Y
   });
   
+  // Track if we should preserve the camera's rotation during launch
+  const preserveRotationRef = useRef<boolean>(false);
+  
   const initialCameraPosition = useRef<THREE.Vector3 | null>(null);
   const staticGroundY = -2.8; // Updated to match the grid position
   const lastRocketY = useRef<number>(staticGroundY);
@@ -370,6 +375,22 @@ function DynamicCamera({
     }
   }, [view]);
 
+  // Listen for rocket launch events with preservation flag
+  useEffect(() => {
+    const handleRocketLaunched = (e: CustomEvent) => {
+      if (e.detail && e.detail.preserveRotation !== undefined) {
+        preserveRotationRef.current = e.detail.preserveRotation;
+        console.log(`DynamicCamera: preserveRotation=${preserveRotationRef.current}`);
+      }
+    };
+    
+    window.addEventListener('rocketLaunched', handleRocketLaunched as EventListener);
+    
+    return () => {
+      window.removeEventListener('rocketLaunched', handleRocketLaunched as EventListener);
+    };
+  }, []);
+  
   // Track rocket launch
   useEffect(() => {
     if (isLaunched && ref.current) {
@@ -466,7 +487,10 @@ function DynamicCamera({
       ref.current.lookAt(rocketX, rocketY, rocketZ);
       
       // Ensure we maintain proper up vector during flight for each view type
-      ref.current.up.copy(camerasUp.current[view]);
+      // But only reset the up vector if we're not preserving rotation
+      if (!preserveRotationRef.current) {
+        ref.current.up.copy(camerasUp.current[view]);
+      }
       
       // Adjust FOV for better visibility - more dynamic FOV change
       const targetFOV = Math.min(70, 50 + altitude * 0.15);
@@ -514,6 +538,10 @@ function RocketSimulation({
     console.log("RocketSimulation mounted");
     return () => console.log("RocketSimulation unmounted");
   }, []);
+  
+  // Track if we should preserve the camera rotation during launch
+  const preserveRotationRef = useRef(false);
+  
   // Emit launch events for better component coordination 
   const emitLaunchEvent = (type: string, data: any) => {
     if (typeof window !== 'undefined') {
@@ -543,6 +571,19 @@ function RocketSimulation({
     isLaunchedRef.current = isLaunched;
   }, [position, velocity, isLaunched]);
   
+  // Listen for reset camera view events
+  useEffect(() => {
+    const handleResetCameraView = () => {
+      // When camera view is reset, we should not preserve rotation
+      preserveRotationRef.current = false;
+    };
+    
+    window.addEventListener('resetCameraView', handleResetCameraView as EventListener);
+    return () => {
+      window.removeEventListener('resetCameraView', handleResetCameraView as EventListener);
+    };
+  }, []);
+  
   // Simplify to a single showFire state for pre-launch
   const [showFire, setShowFire] = useState(false);
   const launchTime = useRef<number>(0);
@@ -551,6 +592,63 @@ function RocketSimulation({
   
   // Prevent unwanted transitions
   const isTransitioning = useRef<boolean>(false);
+  
+  // Handle launch state changes - with careful state management
+  useEffect(() => {
+    // Lock transitions briefly during state change
+    isTransitioning.current = true;
+    
+    if (isLaunched) {
+      // Check if we should preserve rotation by seeing if there's any active camera roll
+      // We'll use the value from CustomOrbitControls if available
+      preserveRotationRef.current = typeof (window as any).lastRocketRotation === 'number';
+      
+      // Add debug information about rotation state
+      console.log(`Launch with preserveRotation: ${preserveRotationRef.current}, rotation value: ${(window as any).lastRocketRotation}`);
+      
+      // Ensure we're exactly at ground position to start
+      setPosition(GROUND_POSITION);
+      positionRef.current = GROUND_POSITION;
+      
+      // Start with zero velocity (speedometer will show 0 until real movement starts)
+      setVelocity([0, 0, 0]);
+      velocityRef.current = [0, 0, 0];
+      
+      // Show fire immediately
+      setShowFire(true);
+      
+      // Set current time as launch time
+      const now = Date.now() / 1000;
+      launchTime.current = now;
+      
+      // Schedule the rocket to start moving after 2 seconds (increased from 300ms for clearer ground fire effect)
+      startMovingTime.current = now + 2.0;
+      lastUpdateTime.current = now;
+      
+      // Emit event for camera to follow rocket - include preserveRotation flag
+      emitLaunchEvent('rocketLaunched', { 
+        position: GROUND_POSITION,
+        preserveRotation: preserveRotationRef.current
+      });
+    } else {
+      // Reset the fire when not launched
+      setShowFire(false);
+      launchTime.current = 0;
+      startMovingTime.current = 0;
+      lastUpdateTime.current = 0;
+      
+      // Ensure we're exactly at ground level when not launched
+      setPosition(GROUND_POSITION);
+      positionRef.current = GROUND_POSITION;
+      setVelocity([0, 0, 0]);
+      velocityRef.current = [0, 0, 0];
+    }
+    
+    // Release transition lock after a brief delay
+    setTimeout(() => {
+      isTransitioning.current = false;
+    }, 50);
+  }, [isLaunched]);
   
   // Basic physics constants - dramatically increased for guaranteed movement
   const gravity = -9.8;
@@ -654,53 +752,6 @@ function RocketSimulation({
       });
     }
   }, [resetTrigger]);
-  
-  // Handle launch state changes - with careful state management
-  useEffect(() => {
-    // Lock transitions briefly during state change
-    isTransitioning.current = true;
-    
-    if (isLaunched) {
-      // Ensure we're exactly at ground position to start
-      setPosition(GROUND_POSITION);
-      positionRef.current = GROUND_POSITION;
-      
-      // Start with zero velocity (speedometer will show 0 until real movement starts)
-      setVelocity([0, 0, 0]);
-      velocityRef.current = [0, 0, 0];
-      
-      // Show fire immediately
-      setShowFire(true);
-      
-      // Set current time as launch time
-      const now = Date.now() / 1000;
-      launchTime.current = now;
-      
-      // Schedule the rocket to start moving after 2 seconds (increased from 300ms for clearer ground fire effect)
-      startMovingTime.current = now + 2.0;
-      lastUpdateTime.current = now;
-      
-      // Emit event for camera to follow rocket
-      emitLaunchEvent('rocketLaunched', { position: GROUND_POSITION });
-    } else {
-      // Reset the fire when not launched
-      setShowFire(false);
-      launchTime.current = 0;
-      startMovingTime.current = 0;
-      lastUpdateTime.current = 0;
-      
-      // Ensure we're exactly at ground level when not launched
-      setPosition(GROUND_POSITION);
-      positionRef.current = GROUND_POSITION;
-      setVelocity([0, 0, 0]);
-      velocityRef.current = [0, 0, 0];
-    }
-    
-    // Release transition lock after a brief delay
-    setTimeout(() => {
-      isTransitioning.current = false;
-    }, 50);
-  }, [isLaunched]);
   
   // Simple physics simulation - runs every frame with protections against visual jumps
   useFrame((state, delta) => {
@@ -903,6 +954,7 @@ function RocketSimulation({
         highlightedPart={highlightedPart}
         preLaunchFire={showFire}
         countdownStage={3} // Always max flame intensity
+        preserveRotation={preserveRotationRef.current} // Pass preserveRotation flag
       />
     </group>
   );
@@ -938,22 +990,33 @@ function ViewportControls({
     };
   }, []);
 
+  // Function to completely reset the view and rotation
+  const resetView = () => {
+    console.log(`Setting view to perspective (current: ${view})`);
+    setView('perspective');
+    
+    // Reset compass rotation
+    setCompassRotation(0);
+    
+    // Reset global rotation tracker
+    if (typeof window !== 'undefined') {
+      (window as any).lastRocketRotation = 0;
+    }
+    
+    // Dispatch events to reset camera and compass
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rocketRotation', { 
+        detail: { rotation: 0 } 
+      }));
+      // Dispatch event to smoothly reposition the camera and rocket
+      window.dispatchEvent(new CustomEvent('resetCameraView', {}));
+    }
+  };
+
   return (
     <div className="absolute top-8 right-10 z-50 flex flex-col items-center pointer-events-auto">
       <motion.button 
-        onClick={() => {
-          console.log(`Setting view to perspective (current: ${view})`);
-          setView('perspective');
-          // Reset compass rotation when setting to perspective view
-          setCompassRotation(0);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('rocketRotation', { 
-              detail: { rotation: 0 } 
-            }));
-            // Dispatch event to smoothly reposition the camera and rocket
-            window.dispatchEvent(new CustomEvent('resetCameraView', {}));
-          }
-        }}
+        onClick={resetView}
         className="rounded-full transition-all mx-2"
         aria-label="Reset Camera to Default View"
         whileHover={{ 
@@ -1040,12 +1103,26 @@ function CustomOrbitControls({ position, view }: { position: [number, number, nu
     side: new THREE.Vector3(0, 1, 0),     // Looking from side, "up" is Y
     perspective: new THREE.Vector3(0, 1, 0) // Standard "up" is Y
   });
+
+  // Store the last rotation value globally so it can be accessed by other components
+  useEffect(() => {
+    // Initialize the global variable
+    if (typeof window !== 'undefined') {
+      // Initialize with current value if it exists
+      (window as any).lastRocketRotation = cameraRoll.current;
+    }
+  }, []);
   
   // Listen for reset events to completely reset the camera
   useEffect(() => {
     const handleResetCamera = () => {
       // Reset camera roll
       cameraRoll.current = 0;
+      
+      // Reset global rotation tracker
+      if (typeof window !== 'undefined') {
+        (window as any).lastRocketRotation = 0;
+      }
       
       // Reset camera up vector based on view type
       camera.up.copy(camerasUp.current[view]);
@@ -1236,6 +1313,11 @@ function CustomOrbitControls({ position, view }: { position: [number, number, nu
         // Track total roll amount
         cameraRoll.current += deltaX
         
+        // Store roll value globally
+        if (typeof window !== 'undefined') {
+          (window as any).lastRocketRotation = cameraRoll.current;
+        }
+        
         // Emit an event with the current camera rotation to update the compass
         if (typeof window !== 'undefined') {
           // Convert radians to degrees and ensure values are within 0-360 range
@@ -1331,6 +1413,11 @@ function CustomOrbitControls({ position, view }: { position: [number, number, nu
       
       // Track total roll amount
       cameraRoll.current += deltaX
+      
+      // Store roll value globally
+      if (typeof window !== 'undefined') {
+        (window as any).lastRocketRotation = cameraRoll.current;
+      }
       
       // Emit an event with the current camera rotation to update the compass
       if (typeof window !== 'undefined') {
